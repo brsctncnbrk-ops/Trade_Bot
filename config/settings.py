@@ -1,0 +1,142 @@
+"""Uygulama yapilandirmasi.
+
+Tum ayarlar ortam degiskenlerinden (veya .env dosyasindan) okunur ve
+pydantic ile dogrulanir. Guvenlik kurallari:
+
+- Varsayilan mod "backtest" — hicbir API anahtari gerektirmez.
+- MODE=live yalnizca ALLOW_LIVE_TRADING=true ile birlikte kabul edilir.
+- Sirlar asla loglanmaz ve kodda sabitlenmez.
+"""
+
+from __future__ import annotations
+
+from typing import List
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ALLOWED_MODES = {"backtest", "testnet", "live"}
+
+
+class LiveTradingNotAllowedError(ValueError):
+    """MODE=live secildi ancak ALLOW_LIVE_TRADING=true degil."""
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # Calisma modu
+    mode: str = Field(default="backtest", alias="MODE")
+    allow_live_trading: bool = Field(default=False, alias="ALLOW_LIVE_TRADING")
+
+    # Binance API (live)
+    binance_api_key: str = Field(default="", alias="BINANCE_API_KEY")
+    binance_api_secret: str = Field(default="", alias="BINANCE_API_SECRET")
+
+    # Binance API (testnet)
+    binance_testnet_api_key: str = Field(default="", alias="BINANCE_TESTNET_API_KEY")
+    binance_testnet_api_secret: str = Field(
+        default="", alias="BINANCE_TESTNET_API_SECRET"
+    )
+
+    # Islem ayarlari
+    base_currency: str = Field(default="USDT", alias="BASE_CURRENCY")
+    symbols_raw: str = Field(default="BTC/USDT,ETH/USDT", alias="SYMBOLS")
+    timeframe: str = Field(default="1h", alias="TIMEFRAME")
+
+    # Risk yonetimi
+    initial_balance: float = Field(default=1000.0, gt=0, alias="INITIAL_BALANCE")
+    max_risk_per_trade: float = Field(
+        default=0.01, gt=0, le=1, alias="MAX_RISK_PER_TRADE"
+    )
+    max_daily_loss: float = Field(default=0.03, gt=0, le=1, alias="MAX_DAILY_LOSS")
+    max_open_positions: int = Field(default=1, ge=1, alias="MAX_OPEN_POSITIONS")
+    max_daily_trades: int = Field(default=5, ge=1, alias="MAX_DAILY_TRADES")
+
+    stop_loss_percent: float = Field(
+        default=0.02, gt=0, lt=1, alias="STOP_LOSS_PERCENT"
+    )
+    take_profit_percent: float = Field(
+        default=0.04, gt=0, lt=1, alias="TAKE_PROFIT_PERCENT"
+    )
+
+    # Telegram (opsiyonel)
+    telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: str = Field(default="", alias="TELEGRAM_CHAT_ID")
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in ALLOWED_MODES:
+            raise ValueError(
+                f"Gecersiz MODE: {value!r}. Izin verilen modlar: "
+                f"{sorted(ALLOWED_MODES)}"
+            )
+        return normalized
+
+    @model_validator(mode="after")
+    def enforce_live_trading_gate(self) -> "Settings":
+        if self.mode == "live" and not self.allow_live_trading:
+            raise LiveTradingNotAllowedError(
+                "MODE=live kullanilamaz: canli islem varsayilan olarak kapalidir. "
+                "Gercekten canli islem istiyorsaniz ALLOW_LIVE_TRADING=true "
+                "ortam degiskenini de acikca ayarlamalisiniz."
+            )
+        return self
+
+    @property
+    def symbols(self) -> List[str]:
+        return [s.strip() for s in self.symbols_raw.split(",") if s.strip()]
+
+    @property
+    def is_backtest(self) -> bool:
+        return self.mode == "backtest"
+
+    @property
+    def is_testnet(self) -> bool:
+        return self.mode == "testnet"
+
+    @property
+    def is_live(self) -> bool:
+        return self.mode == "live"
+
+    def masked_summary(self) -> dict:
+        """Sirlari maskeleyerek loglanabilir bir ozet dondurur."""
+
+        def mask(value: str) -> str:
+            if not value:
+                return "(bos)"
+            return f"{value[:3]}***" if len(value) > 3 else "***"
+
+        return {
+            "mode": self.mode,
+            "allow_live_trading": self.allow_live_trading,
+            "base_currency": self.base_currency,
+            "symbols": self.symbols,
+            "timeframe": self.timeframe,
+            "initial_balance": self.initial_balance,
+            "max_risk_per_trade": self.max_risk_per_trade,
+            "max_daily_loss": self.max_daily_loss,
+            "max_open_positions": self.max_open_positions,
+            "max_daily_trades": self.max_daily_trades,
+            "stop_loss_percent": self.stop_loss_percent,
+            "take_profit_percent": self.take_profit_percent,
+            "binance_api_key": mask(self.binance_api_key),
+            "binance_testnet_api_key": mask(self.binance_testnet_api_key),
+            "telegram_bot_token": mask(self.telegram_bot_token),
+        }
+
+
+def get_settings(**overrides) -> Settings:
+    """Ayarları ortamdan yukleyen fabrika.
+
+    Testlerin .env dosyasindan etkilenmemesi icin `_env_file=None`
+    gecilebilir; ek anahtar kelime argumanlari Settings'e aktarilir.
+    """
+    return Settings(**overrides)
