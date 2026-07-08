@@ -26,6 +26,7 @@ import pandas as pd
 
 from bot.logger import get_logger
 from bot.state import Position
+from bot.take_profit import TakeProfitManager
 
 logger = get_logger()
 
@@ -40,6 +41,8 @@ class Signal:
     price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
+    stop_distance: Optional[float] = None
+    risk_reward: Optional[float] = None
 
     @property
     def fingerprint(self) -> str:
@@ -52,15 +55,25 @@ class EmaRsiStrategy:
         self,
         stop_loss_percent: float = 0.02,
         take_profit_percent: float = 0.04,
+        stop_atr_multiplier: float = 2.0,
+        min_stop_distance_percent: float = 0.003,
+        max_stop_distance_percent: float = 0.05,
+        min_risk_reward: float = 2.0,
         ema_fast: int = 20,
         ema_slow: int = 50,
         rsi_period: int = 14,
+        atr_period: int = 14,
     ) -> None:
         self.stop_loss_percent = stop_loss_percent
         self.take_profit_percent = take_profit_percent
+        self.stop_atr_multiplier = stop_atr_multiplier
+        self.min_stop_distance_percent = min_stop_distance_percent
+        self.max_stop_distance_percent = max_stop_distance_percent
+        self.take_profit_manager = TakeProfitManager(min_risk_reward=min_risk_reward)
         self.ema_fast_col = f"ema_{ema_fast}"
         self.ema_slow_col = f"ema_{ema_slow}"
         self.rsi_col = f"rsi_{rsi_period}"
+        self.atr_col = f"atr_{atr_period}"
 
     def generate_signal(
         self,
@@ -72,7 +85,7 @@ class EmaRsiStrategy:
         if df is None or df.empty:
             return Signal("HOLD", symbol, "Veri yok; sinyal uretilemedi.")
 
-        required = {self.ema_fast_col, self.ema_slow_col, self.rsi_col, "close"}
+        required = {self.ema_fast_col, self.ema_slow_col, self.rsi_col, self.atr_col, "close"}
         missing = required - set(df.columns)
         if missing:
             return Signal(
@@ -84,6 +97,7 @@ class EmaRsiStrategy:
         ema_fast = row[self.ema_fast_col]
         ema_slow = row[self.ema_slow_col]
         rsi = row[self.rsi_col]
+        atr = row[self.atr_col]
 
         if pd.isna(ema_fast) or pd.isna(ema_slow) or pd.isna(rsi):
             return Signal("HOLD", symbol, "Gosterge degerleri henuz olusmadi (NaN).")
@@ -128,21 +142,61 @@ class EmaRsiStrategy:
                 "HOLD", symbol, f"RSI {rsi:.1f} >= {RSI_OVERBOUGHT}; asiri alim."
             )
 
-        stop_loss = close * (1.0 - self.stop_loss_percent)
-        take_profit = close * (1.0 + self.take_profit_percent)
+        if pd.isna(atr) or float(atr) <= 0:
+            logger.warning("STOP LOSS INVALID | {} | ATR hesaplanamadi", symbol)
+            return Signal("HOLD", symbol, "Stop Loss hesaplanamadi: ATR gecersiz.")
+
+        stop_distance = float(atr) * self.stop_atr_multiplier
+        min_distance = close * self.min_stop_distance_percent
+        max_distance = close * self.max_stop_distance_percent
+        logger.info(
+            "STOP DISTANCE | {} | atr={:.6f} | distance={:.6f} | min={:.6f} | max={:.6f}",
+            symbol,
+            float(atr),
+            stop_distance,
+            min_distance,
+            max_distance,
+        )
+        if stop_distance < min_distance:
+            logger.warning("STOP LOSS INVALID | {} | stop mesafesi cok yakin", symbol)
+            return Signal("HOLD", symbol, "Stop Loss gecersiz: stop mesafesi cok yakin.")
+        if stop_distance > max_distance:
+            logger.warning("STOP LOSS INVALID | {} | stop mesafesi cok uzak", symbol)
+            return Signal("HOLD", symbol, "Stop Loss gecersiz: stop mesafesi cok uzak.")
+
+        stop_loss = close - stop_distance
+        try:
+            tp_plan = self.take_profit_manager.create_plan(
+                "buy",
+                entry_price=close,
+                stop_loss=stop_loss,
+                stop_distance=stop_distance,
+            )
+        except RuntimeError as exc:
+            logger.warning("TAKE PROFIT INVALID | {} | {}", symbol, exc)
+            return Signal("HOLD", symbol, f"Take Profit hesaplanamadi: {exc}")
         signal = Signal(
             "BUY",
             symbol,
             f"EMA20 > EMA50 ve RSI {rsi:.1f} < {RSI_OVERBOUGHT}.",
             price=close,
             stop_loss=stop_loss,
-            take_profit=take_profit,
+            take_profit=tp_plan.take_profit,
+            stop_distance=stop_distance,
+            risk_reward=tp_plan.risk_reward,
+        )
+        logger.info(
+            "STOP LOSS CREATED | {} | entry {:.4f} | stop {:.4f} | distance {:.4f}",
+            symbol,
+            close,
+            stop_loss,
+            stop_distance,
         )
         logger.info(
             "Strateji sinyali | {} | BUY @ {:.4f} (SL {:.4f} / TP {:.4f})",
             symbol,
             close,
             stop_loss,
-            take_profit,
+            tp_plan.take_profit,
         )
         return signal

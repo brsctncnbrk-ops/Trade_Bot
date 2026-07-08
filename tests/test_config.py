@@ -67,3 +67,28 @@ def test_masked_summary_hides_secrets():
     summary = str(settings.masked_summary())
     assert "supersecretkey123" not in summary
     assert "tokentokentoken" not in summary
+
+
+def test_risk_settings_for_100_usdt_testnet_bankroll():
+    settings = make_settings(
+        MODE="testnet",
+        ALLOW_LIVE_TRADING="false",
+        INITIAL_BALANCE=100,
+        MAX_CAPITAL_USDT=100,
+        MAX_NOTIONAL_PER_TRADE_USDT=10,
+        MAX_TOTAL_OPEN_RISK_USDT=100,
+        MAX_CONCURRENT_ORDERS=1,
+        ORDER_TYPE="LIMIT",
+        OPEN_ORDER_TIMEOUT_SECONDS=60,
+        SYMBOLS="BTC/USDT,ETH/USDT",
+    )
+    assert settings.mode == "testnet"
+    assert not settings.allow_live_trading
+    assert settings.initial_balance == 100
+    assert settings.max_capital_usdt == 100
+    assert settings.max_notional_per_trade_usdt == 10
+    assert settings.max_total_open_risk_usdt == 100
+    assert settings.max_concurrent_orders == 1
+    assert settings.order_type == "limit"
+    assert settings.open_order_timeout_seconds == 60
+    assert settings.symbols == ["BTC/USDT", "ETH/USDT"]

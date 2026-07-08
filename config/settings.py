@@ -51,19 +51,44 @@ class Settings(BaseSettings):
 
     # Risk yonetimi
     initial_balance: float = Field(default=1000.0, gt=0, alias="INITIAL_BALANCE")
+    max_capital_usdt: float = Field(default=1_000_000.0, gt=0, alias="MAX_CAPITAL_USDT")
     max_risk_per_trade: float = Field(
         default=0.01, gt=0, le=1, alias="MAX_RISK_PER_TRADE"
     )
     max_daily_loss: float = Field(default=0.03, gt=0, le=1, alias="MAX_DAILY_LOSS")
+    max_hourly_loss: float = Field(default=0.02, gt=0, le=1, alias="MAX_HOURLY_LOSS")
     max_open_positions: int = Field(default=1, ge=1, alias="MAX_OPEN_POSITIONS")
     max_daily_trades: int = Field(default=5, ge=1, alias="MAX_DAILY_TRADES")
+    max_notional_per_trade_usdt: float = Field(
+        default=1_000_000.0, gt=0, alias="MAX_NOTIONAL_PER_TRADE_USDT"
+    )
+    max_total_open_risk_usdt: float = Field(
+        default=1_000_000.0, gt=0, alias="MAX_TOTAL_OPEN_RISK_USDT"
+    )
+    max_concurrent_orders: int = Field(default=1, ge=0, alias="MAX_CONCURRENT_ORDERS")
+    max_api_errors: int = Field(default=5, ge=1, alias="MAX_API_ERRORS")
 
     stop_loss_percent: float = Field(
         default=0.02, gt=0, lt=1, alias="STOP_LOSS_PERCENT"
     )
+    stop_atr_multiplier: float = Field(default=2.0, gt=0, alias="STOP_ATR_MULTIPLIER")
+    min_stop_distance_percent: float = Field(
+        default=0.003, gt=0, lt=1, alias="MIN_STOP_DISTANCE_PERCENT"
+    )
+    max_stop_distance_percent: float = Field(
+        default=0.05, gt=0, lt=1, alias="MAX_STOP_DISTANCE_PERCENT"
+    )
     take_profit_percent: float = Field(
         default=0.04, gt=0, lt=1, alias="TAKE_PROFIT_PERCENT"
     )
+    min_risk_reward: float = Field(default=2.0, gt=0, alias="MIN_RISK_REWARD")
+
+    # Emir guvenligi
+    order_type: str = Field(default="limit", alias="ORDER_TYPE")
+    open_order_timeout_seconds: int = Field(
+        default=60, ge=1, alias="OPEN_ORDER_TIMEOUT_SECONDS"
+    )
+    state_file: str = Field(default="state.json", alias="STATE_FILE")
 
     # Telegram (opsiyonel)
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
@@ -78,6 +103,14 @@ class Settings(BaseSettings):
                 f"Gecersiz MODE: {value!r}. Izin verilen modlar: "
                 f"{sorted(ALLOWED_MODES)}"
             )
+        return normalized
+
+    @field_validator("order_type")
+    @classmethod
+    def validate_order_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"limit", "market"}:
+            raise ValueError("ORDER_TYPE yalnizca limit veya market olabilir.")
         return normalized
 
     @model_validator(mode="after")
@@ -121,12 +154,25 @@ class Settings(BaseSettings):
             "symbols": self.symbols,
             "timeframe": self.timeframe,
             "initial_balance": self.initial_balance,
+            "max_capital_usdt": self.max_capital_usdt,
             "max_risk_per_trade": self.max_risk_per_trade,
             "max_daily_loss": self.max_daily_loss,
+            "max_hourly_loss": self.max_hourly_loss,
             "max_open_positions": self.max_open_positions,
             "max_daily_trades": self.max_daily_trades,
+            "max_notional_per_trade_usdt": self.max_notional_per_trade_usdt,
+            "max_total_open_risk_usdt": self.max_total_open_risk_usdt,
+            "max_concurrent_orders": self.max_concurrent_orders,
+            "max_api_errors": self.max_api_errors,
+            "order_type": self.order_type,
+            "open_order_timeout_seconds": self.open_order_timeout_seconds,
+            "state_file": self.state_file,
             "stop_loss_percent": self.stop_loss_percent,
+            "stop_atr_multiplier": self.stop_atr_multiplier,
+            "min_stop_distance_percent": self.min_stop_distance_percent,
+            "max_stop_distance_percent": self.max_stop_distance_percent,
             "take_profit_percent": self.take_profit_percent,
+            "min_risk_reward": self.min_risk_reward,
             "binance_api_key": mask(self.binance_api_key),
             "binance_testnet_api_key": mask(self.binance_testnet_api_key),
             "telegram_bot_token": mask(self.telegram_bot_token),

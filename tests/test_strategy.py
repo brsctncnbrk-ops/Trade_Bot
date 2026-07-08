@@ -12,7 +12,7 @@ from bot.state import Position
 from bot.strategy import EmaRsiStrategy
 
 
-def make_df(close=100.0, ema20=110.0, ema50=100.0, rsi=50.0, low=None, high=None):
+def make_df(close=100.0, ema20=110.0, ema50=100.0, rsi=50.0, low=None, high=None, atr=1.0):
     return pd.DataFrame(
         {
             "timestamp": [pd.Timestamp("2024-01-01")],
@@ -24,6 +24,7 @@ def make_df(close=100.0, ema20=110.0, ema50=100.0, rsi=50.0, low=None, high=None
             "ema_20": [ema20],
             "ema_50": [ema50],
             "rsi_14": [rsi],
+            "atr_14": [atr],
         }
     )
 

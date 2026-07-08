@@ -13,6 +13,7 @@ from bot.logger import get_logger
 logger = get_logger()
 
 REQUIRED_COLUMNS = {"close"}
+OHLC_COLUMNS = {"high", "low", "close"}
 
 
 def _validate_input(df: pd.DataFrame) -> None:
@@ -55,15 +56,40 @@ def calculate_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return rsi
 
 
+def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Average True Range (ATR), Wilder yumusatmasi ile."""
+    _validate_input(df)
+    missing = OHLC_COLUMNS - set(df.columns)
+    if missing:
+        raise ValueError(f"ATR icin zorunlu kolonlar eksik: {sorted(missing)}")
+    if period <= 0:
+        raise ValueError(f"ATR periyodu pozitif olmali, {period} verildi.")
+
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    close = df["close"].astype(float)
+    prev_close = close.shift(1)
+    true_range = pd.concat(
+        [
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    return true_range.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+
+
 def add_indicators(
     df: pd.DataFrame,
     ema_fast: int = 20,
     ema_slow: int = 50,
     rsi_period: int = 14,
+    atr_period: int = 14,
 ) -> pd.DataFrame:
     """Stratejinin ihtiyac duydugu tum gosterge kolonlarini ekler.
 
-    Eklenen kolonlar: ema_20, ema_50, rsi_14 (varsayilan periyotlarla).
+    Eklenen kolonlar: ema_20, ema_50, rsi_14, atr_14 (varsayilan periyotlarla).
     Orijinal DataFrame degistirilmez; kopya dondurulur.
     """
     _validate_input(df)
@@ -73,9 +99,11 @@ def add_indicators(
         result[f"ema_{ema_fast}"] = pd.Series(dtype=float)
         result[f"ema_{ema_slow}"] = pd.Series(dtype=float)
         result[f"rsi_{rsi_period}"] = pd.Series(dtype=float)
+        result[f"atr_{atr_period}"] = pd.Series(dtype=float)
         return result
 
     result[f"ema_{ema_fast}"] = calculate_ema(result, ema_fast)
     result[f"ema_{ema_slow}"] = calculate_ema(result, ema_slow)
     result[f"rsi_{rsi_period}"] = calculate_rsi(result, rsi_period)
+    result[f"atr_{atr_period}"] = calculate_atr(result, atr_period)
     return result

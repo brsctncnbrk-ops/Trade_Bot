@@ -101,6 +101,10 @@ def run_backtest(
     strategy = EmaRsiStrategy(
         stop_loss_percent=settings.stop_loss_percent,
         take_profit_percent=settings.take_profit_percent,
+        stop_atr_multiplier=settings.stop_atr_multiplier,
+        min_stop_distance_percent=settings.min_stop_distance_percent,
+        max_stop_distance_percent=settings.max_stop_distance_percent,
+        min_risk_reward=settings.min_risk_reward,
     )
     risk_manager = RiskManager(settings)
     execution = ExecutionEngine(settings)
