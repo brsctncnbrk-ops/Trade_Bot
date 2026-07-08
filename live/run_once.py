@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from bot.alerts import send_telegram_alert
+from bot.notifier import NotificationEvent, TelegramNotifier
 from bot.break_even import BreakEvenManager
 from bot.data_provider import DataProvider
 from bot.execution import ExecutionEngine
@@ -38,6 +38,30 @@ logger = setup_logger(log_to_file=True)
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _notify(
+    notifier: TelegramNotifier,
+    settings,
+    event_type: str,
+    symbol: str = "-",
+    price: float | None = None,
+    quantity: float | None = None,
+    pnl: float | None = None,
+    reason: str = "",
+) -> bool:
+    return notifier.send(
+        NotificationEvent(
+            event_type=event_type,
+            symbol=symbol,
+            mode=settings.mode,
+            price=price,
+            quantity=quantity,
+            pnl=pnl,
+            reason=reason,
+            timestamp=_now_iso(),
+        )
+    )
 
 
 def _load_state_or_halt(state_path: Path, safety_manager: SafetyManager) -> BotState:
@@ -91,6 +115,7 @@ def _cancel_expired_orders(state: BotState, execution: ExecutionEngine, settings
 def run_once() -> None:
     logger.info("Bot basladi (tek dongu).")
     settings = get_settings()
+    notifier = TelegramNotifier(settings)
     logger.info("Yapilandirma yuklendi | {}", settings.masked_summary())
 
     if settings.is_live:
@@ -123,17 +148,20 @@ def run_once() -> None:
         decision = safety_manager.evaluate(state)
         if decision.halted:
             logger.critical("TRADING HALTED | {}", decision.reason)
+            _notify(notifier, settings, "TRADING HALTED", reason=decision.reason)
             return
         _cancel_expired_orders(state, execution, settings)
         decision = safety_manager.evaluate(state)
         if decision.halted:
             logger.critical("TRADING HALTED | {}", decision.reason)
+            _notify(notifier, settings, "TRADING HALTED", reason=decision.reason)
             return
 
         for symbol in settings.symbols:
             try:
                 if state.has_open_order(symbol):
                     logger.info("RISK BLOCKED | {} | acik emir var", symbol)
+                    _notify(notifier, settings, "RISK BLOCKED", symbol=symbol, reason="acik emir var")
                     continue
                 df = provider.get_ohlcv(symbol, limit=200)
                 df = add_indicators(df, trend_ema_period=settings.trend_ema_period)
@@ -141,8 +169,35 @@ def run_once() -> None:
                 if open_position is not None:
                     current_price = float(df.iloc[-1]["close"])
                     atr_value = df.iloc[-1].get("atr_14")
-                    break_even_manager.evaluate(state, symbol, current_price)
-                    trailing_stop_manager.evaluate(state, symbol, current_price, atr_value)
+                    be_result = break_even_manager.evaluate(state, symbol, current_price)
+                    if be_result.activated:
+                        _notify(
+                            notifier,
+                            settings,
+                            "BREAK EVEN ACTIVATED",
+                            symbol=symbol,
+                            price=current_price,
+                            reason=be_result.reason,
+                        )
+                    trailing_result = trailing_stop_manager.evaluate(state, symbol, current_price, atr_value)
+                    if trailing_result.activated:
+                        _notify(
+                            notifier,
+                            settings,
+                            "TRAILING STOP ACTIVATED",
+                            symbol=symbol,
+                            price=trailing_result.stop_price,
+                            reason=trailing_result.reason,
+                        )
+                    elif trailing_result.updated:
+                        _notify(
+                            notifier,
+                            settings,
+                            "TRAILING STOP UPDATED",
+                            symbol=symbol,
+                            price=trailing_result.stop_price,
+                            reason=trailing_result.reason,
+                        )
                     open_position = state.open_positions.get(symbol)
                 signal = strategy.generate_signal(df, symbol, open_position)
                 logger.info("Sinyal | {} | {} | {}", symbol, signal.action, signal.reason)
@@ -151,8 +206,11 @@ def run_once() -> None:
                     if signal.action == "SELL":
                         if "Stop" in signal.reason or "stop" in signal.reason:
                             logger.info("STOP LOSS | {} | {}", symbol, signal.reason)
+                            _notify(notifier, settings, "STOP LOSS", symbol=symbol, price=signal.price, reason=signal.reason)
                         if "Take" in signal.reason or "take" in signal.reason:
                             logger.info("TAKE PROFIT | {} | {}", symbol, signal.reason)
+                            _notify(notifier, settings, "TAKE PROFIT", symbol=symbol, price=signal.price, reason=signal.reason)
+                        _notify(notifier, settings, "EXIT", symbol=symbol, price=signal.price, reason=signal.reason)
                     continue
 
                 ticker = provider.get_ticker(symbol)
@@ -165,6 +223,13 @@ def run_once() -> None:
                 )
                 if not filter_decision.passed:
                     logger.info("RISK BLOCKED | {} | {}", symbol, filter_decision.as_dict())
+                    _notify(
+                        notifier,
+                        settings,
+                        "FILTER BLOCKED",
+                        symbol=symbol,
+                        reason=str(filter_decision.as_dict()),
+                    )
                     continue
 
                 # Hard-cap: testnet hesabi yuksek olsa bile sanal kasa kullanilir.
@@ -173,6 +238,8 @@ def run_once() -> None:
                 logger.info("Risk karari | {} | {}", symbol, decision.as_dict())
                 if not decision.approved:
                     logger.info("RISK BLOCKED | {} | {}", symbol, decision.reason)
+                    event_type = "DAILY LIMIT REACHED" if "Gunluk" in decision.reason or "daily" in decision.reason.lower() else "RISK BLOCKED"
+                    _notify(notifier, settings, event_type, symbol=symbol, reason=decision.reason)
                     continue
 
                 safety_decision = safety_manager.evaluate(state)
@@ -208,6 +275,15 @@ def run_once() -> None:
                     )
                 )
                 logger.info("ORDER CREATED | {} | id={}", symbol, order_id)
+                _notify(
+                    notifier,
+                    settings,
+                    "ORDER CREATED",
+                    symbol=symbol,
+                    price=signal.price,
+                    quantity=decision.position_size,
+                    reason=f"BUY LIMIT order created | id={order_id}",
+                )
 
                 # Backtest emirleri simule filled gelir; pozisyonu state'e isleyelim.
                 if settings.is_backtest and float(order.get("filled") or 0.0) > 0:
@@ -224,12 +300,15 @@ def run_once() -> None:
                         )
                     )
                     logger.info("ORDER FILLED | {} | id={}", symbol, order_id)
-
-                send_telegram_alert(
-                    settings,
-                    f"{symbol} BUY LIMIT emri islendi ({settings.mode}): "
-                    f"{decision.position_size:.6f} @ {signal.price:.4f}",
-                )
+                    _notify(
+                        notifier,
+                        settings,
+                        "ORDER FILLED",
+                        symbol=symbol,
+                        price=signal.price,
+                        quantity=float(order["quantity"]),
+                        reason=f"BUY LIMIT order filled | id={order_id}",
+                    )
             except Exception as exc:
                 logger.error("{} islenirken hata: {}", symbol, exc)
                 safety_manager.record_unexpected_exception(

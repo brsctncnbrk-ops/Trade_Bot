@@ -102,9 +102,12 @@ class Settings(BaseSettings):
     )
     state_file: str = Field(default="state.json", alias="STATE_FILE")
 
-    # Telegram (opsiyonel)
+    # Telegram bildirimleri (opsiyonel)
+    telegram_notifications_enabled: bool = Field(default=True, alias="TELEGRAM_NOTIFICATIONS_ENABLED")
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", alias="TELEGRAM_CHAT_ID")
+    telegram_daily_report_enabled: bool = Field(default=True, alias="TELEGRAM_DAILY_REPORT_ENABLED")
+    notification_cooldown_seconds: int = Field(default=30, ge=0, alias="NOTIFICATION_COOLDOWN_SECONDS")
 
     @field_validator("mode")
     @classmethod
@@ -197,6 +200,9 @@ class Settings(BaseSettings):
             "max_atr_percent": self.max_atr_percent,
             "trend_filter_enabled": self.trend_filter_enabled,
             "trend_ema_period": self.trend_ema_period,
+            "telegram_notifications_enabled": self.telegram_notifications_enabled,
+            "telegram_daily_report_enabled": self.telegram_daily_report_enabled,
+            "notification_cooldown_seconds": self.notification_cooldown_seconds,
             "binance_api_key": mask(self.binance_api_key),
             "binance_testnet_api_key": mask(self.binance_testnet_api_key),
             "telegram_bot_token": mask(self.telegram_bot_token),
