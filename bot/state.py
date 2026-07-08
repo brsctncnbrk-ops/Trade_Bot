@@ -25,12 +25,18 @@ class Position:
     break_even_price: Optional[float] = None
     original_stop_loss: Optional[float] = None
     current_stop_loss: Optional[float] = None
+    trailing_stop_activated: bool = False
+    trailing_activation_price: Optional[float] = None
+    trailing_stop_price: Optional[float] = None
+    highest_price_seen: Optional[float] = None
 
     def __post_init__(self) -> None:
         if self.original_stop_loss is None:
             self.original_stop_loss = self.stop_loss
         if self.current_stop_loss is None:
             self.current_stop_loss = self.stop_loss
+        if self.highest_price_seen is None:
+            self.highest_price_seen = self.entry_price
 
     @property
     def notional(self) -> float:

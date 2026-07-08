@@ -29,6 +29,7 @@ from bot.risk_manager import RiskManager
 from bot.safety_manager import SafetyManager
 from bot.state import BotState, OpenOrder, Position
 from bot.strategy import EmaRsiStrategy
+from bot.trailing_stop import TrailingStopManager
 from config.settings import get_settings
 
 logger = setup_logger(log_to_file=True)
@@ -107,6 +108,10 @@ def run_once() -> None:
     )
     risk_manager = RiskManager(settings)
     break_even_manager = BreakEvenManager(settings.break_even_trigger_r)
+    trailing_stop_manager = TrailingStopManager(
+        activation_r=settings.trailing_stop_activation_r,
+        atr_multiplier=settings.trailing_stop_atr_multiplier,
+    )
     safety_manager = SafetyManager(settings)
     execution = ExecutionEngine(settings)
     state_path = Path(settings.state_file)
@@ -133,7 +138,9 @@ def run_once() -> None:
                 open_position = state.open_positions.get(symbol)
                 if open_position is not None:
                     current_price = float(df.iloc[-1]["close"])
+                    atr_value = df.iloc[-1].get("atr_14")
                     break_even_manager.evaluate(state, symbol, current_price)
+                    trailing_stop_manager.evaluate(state, symbol, current_price, atr_value)
                     open_position = state.open_positions.get(symbol)
                 signal = strategy.generate_signal(df, symbol, open_position)
                 logger.info("Sinyal | {} | {} | {}", symbol, signal.action, signal.reason)
