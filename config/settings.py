@@ -82,6 +82,7 @@ class Settings(BaseSettings):
         default=0.04, gt=0, lt=1, alias="TAKE_PROFIT_PERCENT"
     )
     min_risk_reward: float = Field(default=2.0, gt=0, alias="MIN_RISK_REWARD")
+    break_even_trigger_r: float = Field(default=1.0, gt=0, alias="BREAK_EVEN_TRIGGER_R")
 
     # Emir guvenligi
     order_type: str = Field(default="limit", alias="ORDER_TYPE")
@@ -173,6 +174,7 @@ class Settings(BaseSettings):
             "max_stop_distance_percent": self.max_stop_distance_percent,
             "take_profit_percent": self.take_profit_percent,
             "min_risk_reward": self.min_risk_reward,
+            "break_even_trigger_r": self.break_even_trigger_r,
             "binance_api_key": mask(self.binance_api_key),
             "binance_testnet_api_key": mask(self.binance_testnet_api_key),
             "telegram_bot_token": mask(self.telegram_bot_token),

@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from bot.alerts import send_telegram_alert
+from bot.break_even import BreakEvenManager
 from bot.data_provider import DataProvider
 from bot.execution import ExecutionEngine
 from bot.indicators import add_indicators
@@ -105,6 +106,7 @@ def run_once() -> None:
         min_risk_reward=settings.min_risk_reward,
     )
     risk_manager = RiskManager(settings)
+    break_even_manager = BreakEvenManager(settings.break_even_trigger_r)
     safety_manager = SafetyManager(settings)
     execution = ExecutionEngine(settings)
     state_path = Path(settings.state_file)
@@ -129,6 +131,10 @@ def run_once() -> None:
                 df = provider.get_ohlcv(symbol, limit=200)
                 df = add_indicators(df)
                 open_position = state.open_positions.get(symbol)
+                if open_position is not None:
+                    current_price = float(df.iloc[-1]["close"])
+                    break_even_manager.evaluate(state, symbol, current_price)
+                    open_position = state.open_positions.get(symbol)
                 signal = strategy.generate_signal(df, symbol, open_position)
                 logger.info("Sinyal | {} | {} | {}", symbol, signal.action, signal.reason)
 

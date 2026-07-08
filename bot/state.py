@@ -18,9 +18,19 @@ class Position:
     side: str  # "long" (spot botu sadece long acar)
     entry_price: float
     quantity: float
-    stop_loss: float
+    stop_loss: Optional[float]
     take_profit: float
     opened_at: Optional[str] = None
+    break_even_activated: bool = False
+    break_even_price: Optional[float] = None
+    original_stop_loss: Optional[float] = None
+    current_stop_loss: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        if self.original_stop_loss is None:
+            self.original_stop_loss = self.stop_loss
+        if self.current_stop_loss is None:
+            self.current_stop_loss = self.stop_loss
 
     @property
     def notional(self) -> float:
@@ -28,6 +38,8 @@ class Position:
 
     @property
     def open_risk(self) -> float:
+        if self.stop_loss is None:
+            return 0.0
         return abs(float(self.entry_price) - float(self.stop_loss)) * float(self.quantity)
 
 
