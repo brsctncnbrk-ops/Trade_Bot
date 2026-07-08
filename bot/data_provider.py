@@ -96,6 +96,22 @@ class DataProvider:
             self._exchange = exchange
         return self._exchange
 
+    def get_ticker(self, symbol: str) -> dict:
+        """Best-effort ticker bilgisi dondurur.
+
+        Backtest/offline modda son mum close etrafinda dusuk sentetik spread uretir.
+        Testnet/live modda CCXT fetch_ticker kullanir.
+        """
+        if self.settings.is_backtest:
+            df = self.get_ohlcv(symbol, limit=1)
+            close = float(df.iloc[-1]["close"])
+            spread = close * 0.0002
+            return {"bid": close - spread / 2.0, "ask": close + spread / 2.0}
+        exchange = self._get_exchange()
+        ticker = exchange.fetch_ticker(symbol)
+        logger.info("CCXT ticker alindi | {}", symbol)
+        return ticker
+
     def get_ohlcv(
         self, symbol: str, limit: int = 500, timeframe: Optional[str] = None
     ) -> pd.DataFrame:

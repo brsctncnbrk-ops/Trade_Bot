@@ -86,10 +86,11 @@ def add_indicators(
     ema_slow: int = 50,
     rsi_period: int = 14,
     atr_period: int = 14,
+    trend_ema_period: int = 200,
 ) -> pd.DataFrame:
     """Stratejinin ihtiyac duydugu tum gosterge kolonlarini ekler.
 
-    Eklenen kolonlar: ema_20, ema_50, rsi_14, atr_14 (varsayilan periyotlarla).
+    Eklenen kolonlar: ema_20, ema_50, rsi_14, atr_14, ema_200 (varsayilan periyotlarla).
     Orijinal DataFrame degistirilmez; kopya dondurulur.
     """
     _validate_input(df)
@@ -100,10 +101,12 @@ def add_indicators(
         result[f"ema_{ema_slow}"] = pd.Series(dtype=float)
         result[f"rsi_{rsi_period}"] = pd.Series(dtype=float)
         result[f"atr_{atr_period}"] = pd.Series(dtype=float)
+        result[f"ema_{trend_ema_period}"] = pd.Series(dtype=float)
         return result
 
     result[f"ema_{ema_fast}"] = calculate_ema(result, ema_fast)
     result[f"ema_{ema_slow}"] = calculate_ema(result, ema_slow)
     result[f"rsi_{rsi_period}"] = calculate_rsi(result, rsi_period)
     result[f"atr_{atr_period}"] = calculate_atr(result, atr_period)
+    result[f"ema_{trend_ema_period}"] = calculate_ema(result, trend_ema_period)
     return result

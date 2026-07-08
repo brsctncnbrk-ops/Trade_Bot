@@ -30,6 +30,7 @@ from bot.safety_manager import SafetyManager
 from bot.state import BotState, OpenOrder, Position
 from bot.strategy import EmaRsiStrategy
 from bot.trailing_stop import TrailingStopManager
+from bot.trade_filters import TradeFilterManager
 from config.settings import get_settings
 
 logger = setup_logger(log_to_file=True)
@@ -107,6 +108,7 @@ def run_once() -> None:
         min_risk_reward=settings.min_risk_reward,
     )
     risk_manager = RiskManager(settings)
+    filter_manager = TradeFilterManager(settings)
     break_even_manager = BreakEvenManager(settings.break_even_trigger_r)
     trailing_stop_manager = TrailingStopManager(
         activation_r=settings.trailing_stop_activation_r,
@@ -134,7 +136,7 @@ def run_once() -> None:
                     logger.info("RISK BLOCKED | {} | acik emir var", symbol)
                     continue
                 df = provider.get_ohlcv(symbol, limit=200)
-                df = add_indicators(df)
+                df = add_indicators(df, trend_ema_period=settings.trend_ema_period)
                 open_position = state.open_positions.get(symbol)
                 if open_position is not None:
                     current_price = float(df.iloc[-1]["close"])
@@ -151,6 +153,18 @@ def run_once() -> None:
                             logger.info("STOP LOSS | {} | {}", symbol, signal.reason)
                         if "Take" in signal.reason or "take" in signal.reason:
                             logger.info("TAKE PROFIT | {} | {}", symbol, signal.reason)
+                    continue
+
+                ticker = provider.get_ticker(symbol)
+                filter_decision = filter_manager.evaluate(
+                    symbol,
+                    signal.action,
+                    df,
+                    bid=ticker.get("bid"),
+                    ask=ticker.get("ask"),
+                )
+                if not filter_decision.passed:
+                    logger.info("RISK BLOCKED | {} | {}", symbol, filter_decision.as_dict())
                     continue
 
                 # Hard-cap: testnet hesabi yuksek olsa bile sanal kasa kullanilir.

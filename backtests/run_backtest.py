@@ -96,7 +96,7 @@ def run_backtest(
         provider = DataProvider(settings)
         df = provider.get_ohlcv(symbol, limit=500)
 
-    df = add_indicators(df)
+    df = add_indicators(df, trend_ema_period=settings.trend_ema_period)
 
     strategy = EmaRsiStrategy(
         stop_loss_percent=settings.stop_loss_percent,

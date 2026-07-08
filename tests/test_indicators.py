@@ -23,7 +23,7 @@ def test_rsi_is_calculated(sample_ohlcv):
 
 def test_add_indicators_creates_columns(sample_ohlcv):
     df = add_indicators(sample_ohlcv)
-    for column in ("ema_20", "ema_50", "rsi_14", "atr_14"):
+    for column in ("ema_20", "ema_50", "rsi_14", "atr_14", "ema_200"):
         assert column in df.columns
 
 

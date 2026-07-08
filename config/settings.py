@@ -86,6 +86,15 @@ class Settings(BaseSettings):
     trailing_stop_activation_r: float = Field(default=2.0, gt=0, alias="TRAILING_STOP_ACTIVATION_R")
     trailing_stop_atr_multiplier: float = Field(default=2.0, gt=0, alias="TRAILING_STOP_ATR_MULTIPLIER")
 
+    # Islem filtreleri
+    enable_trade_filters: bool = Field(default=True, alias="ENABLE_TRADE_FILTERS")
+    max_spread_percent: float = Field(default=0.10, ge=0, alias="MAX_SPREAD_PERCENT")
+    min_volume_usdt: float = Field(default=100000.0, ge=0, alias="MIN_VOLUME_USDT")
+    min_atr_percent: float = Field(default=0.20, ge=0, alias="MIN_ATR_PERCENT")
+    max_atr_percent: float = Field(default=5.00, gt=0, alias="MAX_ATR_PERCENT")
+    trend_filter_enabled: bool = Field(default=True, alias="TREND_FILTER_ENABLED")
+    trend_ema_period: int = Field(default=200, ge=1, alias="TREND_EMA_PERIOD")
+
     # Emir guvenligi
     order_type: str = Field(default="limit", alias="ORDER_TYPE")
     open_order_timeout_seconds: int = Field(
@@ -124,6 +133,8 @@ class Settings(BaseSettings):
                 "Gercekten canli islem istiyorsaniz ALLOW_LIVE_TRADING=true "
                 "ortam degiskenini de acikca ayarlamalisiniz."
             )
+        if self.min_atr_percent > self.max_atr_percent:
+            raise ValueError("MIN_ATR_PERCENT, MAX_ATR_PERCENT degerinden buyuk olamaz.")
         return self
 
     @property
@@ -179,6 +190,13 @@ class Settings(BaseSettings):
             "break_even_trigger_r": self.break_even_trigger_r,
             "trailing_stop_activation_r": self.trailing_stop_activation_r,
             "trailing_stop_atr_multiplier": self.trailing_stop_atr_multiplier,
+            "enable_trade_filters": self.enable_trade_filters,
+            "max_spread_percent": self.max_spread_percent,
+            "min_volume_usdt": self.min_volume_usdt,
+            "min_atr_percent": self.min_atr_percent,
+            "max_atr_percent": self.max_atr_percent,
+            "trend_filter_enabled": self.trend_filter_enabled,
+            "trend_ema_period": self.trend_ema_period,
             "binance_api_key": mask(self.binance_api_key),
             "binance_testnet_api_key": mask(self.binance_testnet_api_key),
             "telegram_bot_token": mask(self.telegram_bot_token),
