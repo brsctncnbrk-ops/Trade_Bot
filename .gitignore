@@ -4,6 +4,8 @@
 __pycache__/
 .pytest_cache/
 logs/
+state.json
+state.*.json
 data/raw/
 data/processed/
 *.log
